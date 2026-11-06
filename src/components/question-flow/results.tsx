@@ -1,9 +1,11 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BookCover } from "@/components/book-cover";
-import { OpenLibraryError } from "@/lib/open-library";
+import { BookModal } from "@/components/book-modal/book-modal";
+import { toBox, type Box } from "@/components/book-modal/flip";
+import { OpenLibraryError, descriptionQueryOptions } from "@/lib/open-library";
 import type { Answers } from "@/lib/questions";
 import type { Taste } from "@/lib/taste";
 import { recommendationQueryOptions } from "@/lib/recommend";
@@ -46,31 +48,81 @@ function Skeleton() {
   );
 }
 
+/** How long the pointer must rest on a book before we start loading its description. */
+const HOVER_PREFETCH_MS = 250;
+
 function BookRow({ pick, index }: { pick: ScoredBook; index: number }) {
   const { book, explanation } = pick;
+  // Where the cover was when it was picked up. While set, the modal is open and the cover is hidden.
+  const [fromRect, setFromRect] = useState<Box | null>(null);
+  const coverRef = useRef<HTMLDivElement>(null);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const queryClient = useQueryClient();
+
+  useEffect(() => () => clearTimeout(hoverTimer.current), []);
+
+  // The flip is only as good as the back cover having text on it, and the request takes 1 to 2 s.
+  // Start it early, but only for books the user lingers on (or focuses with the keyboard), so
+  // skimming the list doesn't fire a request per row.
+  const prefetch = () => void queryClient.prefetchQuery(descriptionQueryOptions(book.id));
+
+  const openModal = () => {
+    if (coverRef.current) setFromRect(toBox(coverRef.current.getBoundingClientRect()));
+  };
+
   const meta = [
     book.firstPublishYear,
     book.pages ? `${book.pages} pages` : undefined,
     book.rating ? `${book.rating.toFixed(1)} from ${book.ratingsCount} ratings` : undefined,
   ].filter(Boolean);
+
   return (
-    <li className="flex gap-4">
-      <div className="w-24 shrink-0">
-        <BookCover book={book} />
+    <li>
+      {/* The title is the real button; its ::after stretches over this whole row so the row is
+          clickable with a mouse too. */}
+      <div className="relative flex gap-4 rounded-md has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-offset-4 has-[button:focus-visible]:outline-ink">
+        {/* Hidden (but still taking up its space) while the book is "picked up", so there's a gap on the shelf. */}
+        <div ref={coverRef} className={`w-24 shrink-0 ${fromRect ? "invisible" : ""}`}>
+          <BookCover book={book} />
+        </div>
+        <div className="min-w-0 pt-1">
+          {/* Focusable (not tabbable) so "Show me more" can move focus to the first new book. */}
+          <h3
+            data-book-index={index}
+            tabIndex={-1}
+            className="font-serif text-xl leading-snug outline-none"
+          >
+            <button
+              type="button"
+              aria-haspopup="dialog"
+              onClick={openModal}
+              onPointerEnter={() => {
+                hoverTimer.current = setTimeout(prefetch, HOVER_PREFETCH_MS);
+              }}
+              onPointerLeave={() => clearTimeout(hoverTimer.current)}
+              onFocus={prefetch}
+              className="cursor-pointer text-left outline-none after:absolute after:inset-0 hover:underline"
+            >
+              {book.title}
+            </button>
+          </h3>
+          <p className="text-muted">{book.authors.slice(0, 2).join(", ") || "Unknown author"}</p>
+          <p className="mt-1 text-sm text-muted">{meta.join(", ")}</p>
+          <p className="mt-2 text-sm text-accent">{explanation}</p>
+          <p aria-hidden="true" className="mt-2 text-sm text-muted">
+            Read the back cover
+          </p>
+        </div>
       </div>
-      <div className="min-w-0 pt-1">
-        {/* Focusable (not tabbable) so "Show me more" can move focus to the first new book. */}
-        <h3
-          data-book-index={index}
-          tabIndex={-1}
-          className="font-serif text-xl leading-snug outline-none"
-        >
-          {book.title}
-        </h3>
-        <p className="text-muted">{book.authors.slice(0, 2).join(", ") || "Unknown author"}</p>
-        <p className="mt-1 text-sm text-muted">{meta.join(", ")}</p>
-        <p className="mt-2 text-sm text-accent">{explanation}</p>
-      </div>
+
+      {fromRect && (
+        <BookModal
+          pick={pick}
+          fromRect={fromRect}
+          getReturnRect={() => (coverRef.current ? toBox(coverRef.current.getBoundingClientRect()) : null)}
+          onClosed={() => setFromRect(null)}
+        />
+      )}
     </li>
   );
 }

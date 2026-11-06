@@ -1,4 +1,5 @@
 import { audienceClause } from "./audience";
+import { parseDescription, type BookDescription } from "./description";
 import { OpenLibraryError } from "./errors";
 import { isUnbounded, mergeRanges } from "./ranges";
 import type {
@@ -170,4 +171,28 @@ export async function searchAuthors(
     topWork: d.top_work,
     workCount: d.work_count,
   }));
+}
+
+const WORK_ID = /^OL\d+W$/;
+const NO_DESCRIPTION: BookDescription = { full: "", short: "" };
+
+/**
+ * A book's description from its Open Library work record. Costs one request (about 1 to 2 s),
+ * so call it on demand, not for a whole list. A missing record or description is "no
+ * description" (empty strings), not an error; network and server errors still throw.
+ */
+export async function getWorkDescription(
+  workId: string,
+  signal?: AbortSignal,
+): Promise<BookDescription> {
+  if (!WORK_ID.test(workId)) return NO_DESCRIPTION; // never build a URL from an unexpected id
+  try {
+    const work = await getJson<{ description?: unknown }>(`${BASE_URL}/works/${workId}.json`, signal);
+    return parseDescription(work.description);
+  } catch (err) {
+    if (err instanceof OpenLibraryError && err.kind === "http" && err.status === 404) {
+      return NO_DESCRIPTION;
+    }
+    throw err;
+  }
 }

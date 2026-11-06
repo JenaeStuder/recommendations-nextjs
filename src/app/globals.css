@@ -33,6 +33,11 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Keep the scrollbar's space reserved so hiding it (while a modal is open) doesn't shift the page. */
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   background: var(--paper);
   color: var(--ink);

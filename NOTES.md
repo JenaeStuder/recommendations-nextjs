@@ -68,6 +68,27 @@ Gotchas found:
 
 Google Books is an optional extra for descriptions and page counts. It needs a free browser API key (it returned 429 without one). Restrict the key to our domain.
 
+## Book descriptions (requirement: click a result to see a short description)
+
+**Decision: use Open Library's work record, `https://openlibrary.org/works/{id}.json`.** No key, CORS `*`, and it's the same source and id as our results, so there is no title matching and no wrong-book risk. `description` is a string or `{ type, value }`.
+
+Tested on 150 books from our own result types (popular fantasy, mid-rated romance, hidden-gem biography and mystery, children's):
+
+| Source | Key needed? | Browser (CORS) | Had a description | Wrong-book risk | Verdict |
+|---|---|---|---|---|---|
+| **Open Library work record** | No | Yes | **147 / 150 (98%)** | None (same id) | **Use this** |
+| Wikipedia (search, then summary) | No | Yes | about 68% found a page; 62% verifiably the right book | Real: "Devil on horseback" by Elizabeth Graham returned the actress Elizabeth Taylor; others returned the author's page, not the book | Not worth it, even as a fallback |
+| Google Books | Yes, in practice | Allowed, but | 429 "Quota exceeded" with no key (shared daily quota) | n/a | Unusable without a key |
+
+Wikipedia also throttled a polite one-at-a-time test 76 times in about 100 requests, needs two requests per book, and its text is CC BY-SA (attribution required).
+
+Things to handle when building it:
+- **Fetch on click** (plus optional hover/focus prefetch), never in bulk: about 1.2 to 1.8 s per request, so it needs a designed loading state. Cache with TanStack Query (descriptions rarely change; long `staleTime`/`gcTime`).
+- **Text needs cleaning** (pure function, unit tested): 68% use `\r\n`; about 10% have `**bold**`, markdown links or bare URLs; a few have `----------` separators, `Source:` footers, `[1]: url` link definitions or HTML. Median length is 500 to 1,100 characters, so truncate to a short version at a sentence boundary.
+- **No description** for about 2% (3 of 150): show a friendly message and a link to the book on Open Library. Some descriptions may not be in English.
+- Always link back to the book's Open Library page. Licence of user-contributed descriptions not verified; fine for a demo, check before anything commercial.
+- Use an accessible disclosure (button with `aria-expanded`) or dialog, not a hover-only tooltip. The swipe deck (step 7) should reuse the same hook.
+
 ## Recommendation flow
 
 ### Questions (v1)
@@ -152,6 +173,23 @@ Check domain and trademark availability before deciding.
      - **Why this can't serve false data:** the cache key is the exact request (query, ranges, audience, sort, page, author key). A loved book or author changes the request, so it is never matched against a search without it. Do **not** key on "similar criteria" or ignore the book/author: tests demonstrate the wrong results that would give.
      - Memory only: a page reload clears it. Persisting to `localStorage` is possible but risky: stored `Book` objects would break after any change to their shape (this has already happened once, when `authorKeys` was added), so it would need a build-id buster and a size cap. Not done.
    - Not wired yet: `learn()` has no UI until the swipe deck (step 7) feeds it likes, skips and saves.
+6b. [x] Book descriptions: click a result for a short description (see "Book descriptions" above)
+   - **The UI: a "pick the book up and turn it over" modal** (`src/components/book-modal/`). Clicking a book lifts its cover off the list, flies it to the centre while it turns over, and the back cover is the modal (title, author, stats, description, link to Open Library, Close). Closing flips it back and sets it down in its place.
+     - A real `<dialog>` opened with `showModal()`: the browser provides the focus trap, Escape, the inert page behind, and returning focus to the book's button. We take over Escape (`cancel` event) so the book is put back instead of vanishing; clicking the dimmed area or Close does the same.
+     - The animation is **FLIP** with the Web Animations API (no library): the card is laid out centred at final size, then animated *from* a transform that puts it exactly over the cover (`geometryFor`, `openKeyframes`, `closeKeyframes` in `flip.ts`, pure and unit tested). Close re-measures the cover's *current* position, so it lands correctly even if the page moved.
+     - The list cover is `invisible` (keeps its space) while the book is picked up, so a gap is left on the shelf.
+     - **Smoothness (this was fixed once; don't regress it).** The first version had a "lift" segment (ease-out) joined to a "flip" segment (ease-in); both curves come to rest at the join, so the book **stopped dead for about 0.1 s mid-air** (measured: 7 consecutive frames moving 0 to 4 px between frames of 90 to 120 px; the ease-out also made it shoot off the shelf). Now the whole trip is one continuous path (`poseAt`) driven by **one** ease-in-out (`easeInOutCubic`), sampled into 48 keyframes with **no per-keyframe easing**. Closing is exactly opening played backwards.
+     - Tests encode this: no keyframe has `easing`; the slowest step in the middle 40% of the trip is at least 12% of the fastest (measured worst case 19%, the old stall about 0%); no single step covers more than 12% of the journey; reintroducing two eased segments fails the suite.
+     - **Every keyframe must use the same transform functions in the same order**, or the browser interpolates matrices and the card swings along a wild path (a test guards this).
+     - **Only `transform` is animated.** The card's shadow is static (an animated `box-shadow` repaints every frame), the dimmer is a plain tint with no `backdrop-blur` (re-blurred every frame while it fades), and the description's bottom fade is a gradient overlay, not `mask-image` (costly on a layer turning in 3D).
+     - To measure smoothness in a browser, sample the card's `getBoundingClientRect()` every `requestAnimationFrame` and look for runs of frames that barely move; frame gaps alone won't show it (the stall had perfectly even 17 ms frames).
+     - **Reduced motion:** no flight or flip; the card just appears and disappears.
+     - The page behind can't scroll while open. `html { scrollbar-gutter: stable }` stops the layout shifting when the scrollbar is hidden, which would nudge the cover's return spot.
+     - The card is 2:3 and sized `min(420px, 92vw, 61dvh)` so it always fits; the description area scrolls and fades at the bottom edge (the cue that it scrolls, important on phones).
+     - The front face reuses the list's cover image (already loaded, no flash); it's the 'M' size scaled up, slightly soft only while in flight.
+     - Hover (250 ms) or keyboard focus prefetches the description so the back cover usually has text by the time it turns.
+     - **Dev-mode gotcha:** React runs effects twice on mount, and our cleanup calls `dialog.close()`, whose `close` event arrives *after* the remount. The `onClose` handler therefore ignores the event unless the dialog is genuinely closed (otherwise the modal closed itself instantly in dev).
+   - Not done yet: a "read more" for the full text (`parseDescription` already returns it), reuse of the flip in the swipe deck, and the visual design of the back cover (currently a plain white page with a spine shadow).
 7. [ ] Swipe deck + keyboard controls
 8. [ ] Shelves, local saving, shareable URLs
 9. [ ] Accessibility pass, Lighthouse, tests (Vitest + Playwright), CI

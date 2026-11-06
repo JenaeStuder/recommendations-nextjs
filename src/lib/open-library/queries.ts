@@ -1,5 +1,5 @@
 import { keepPreviousData, queryOptions, type QueryClient } from "@tanstack/react-query";
-import { getTrendingBooks, searchAuthors, searchBooks } from "./client";
+import { getTrendingBooks, getWorkDescription, searchAuthors, searchBooks } from "./client";
 import { OpenLibraryError } from "./errors";
 import type { Book, SearchFilters, SearchResult } from "./types";
 
@@ -51,6 +51,17 @@ export function cachedSearch(
       gcTime: GC_TIME,
     });
 }
+
+/** Descriptions almost never change, so keep them fresh for a day (in memory; a reload clears it). */
+const DESCRIPTION_STALE_TIME = 24 * HOUR;
+
+export const descriptionQueryOptions = (workId: string) =>
+  queryOptions({
+    queryKey: ["books", "description", workId] as const,
+    queryFn: ({ signal }) => getWorkDescription(workId, signal),
+    staleTime: DESCRIPTION_STALE_TIME,
+    gcTime: GC_TIME,
+  });
 
 export const trendingQueryOptions = (limit = 20) =>
   queryOptions({
