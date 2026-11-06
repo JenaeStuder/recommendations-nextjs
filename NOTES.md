@@ -25,7 +25,12 @@ What reviewers should notice: polished interactions, accessibility, thoughtful e
 | Styling | Tailwind CSS v4 (configured in CSS, no `tailwind.config.js`) |
 | Package manager | pnpm 10 (`packageManager` field in `package.json`) |
 | Node | 24.22.2 (`.nvmrc`; run `nvm use`). Node 22.9 breaks the Tailwind build, so 22.12+ is required. |
+| Testing | Vitest (`pnpm test`, tests sit next to the code as `*.test.ts`) |
 | Planned | TanStack Query (fetching/caching), Zustand + persist (local state), Framer Motion (motion), dnd-kit (shelves) |
+
+**Static export and PPR don't mix.** `cacheComponents` / `partialPrefetching` throw "PPR cannot be enabled in export mode", so they are off. Don't re-enable them while we export statically.
+
+**Stale build cache:** if `pnpm build` fails with a Tailwind `require() of ES Module` error after switching Node versions, run `rm -rf .next` and rebuild.
 
 Next.js 16 has breaking changes from older versions. Check `node_modules/next/dist/docs/` before using an API (see `AGENTS.md`).
 
@@ -55,7 +60,7 @@ Example query (tested, 538 results):
 ```
 
 Gotchas found:
-- **Low-count ratings dominate `sort=rating`.** Obscure books with ~40 ratings rank first. Add a floor such as `ratings_count:[50 TO *]` unless the user picks "hidden gems".
+- **Low-count ratings dominate `sort=rating`.** Obscure books with ~40 ratings rank first. Add a floor such as `ratings_count:[50 TO *]` unless the user picks "hidden gems". **But 50 is too strict for narrow filters:** fantasy + dragons + 2000-2025 + 200-400 pages gives 538 results with no floor, 24 with a floor of 10, and 0 with 50. The scoring step must start high and step the floor down (50 → 10 → 1) until it has enough candidates.
 - **Subjects are messy** (`Fantasy`, `fantasy fiction`, `Fantasy, Fiction`). Keep a curated map from each UI option to the subject strings it should match.
 - **Range brackets need URL-encoding** (`[` `]`). `URLSearchParams` handles this.
 - Some books have no cover. Design a good fallback cover.
@@ -111,11 +116,42 @@ Check domain and trademark availability before deciding.
 ## Next steps
 
 1. [x] Scaffold Next.js + Tailwind + pnpm
-2. [ ] Enable static export (`output: 'export'`) and set up hosting
+2. [x] Enable static export (`output: 'export'`, `images.unoptimized`); build writes to `out/`
+   - [ ] Pick a free host and deploy
 3. [ ] Set up the theme in Tailwind v4 (colours, type, dark mode)
-4. [ ] Open Library client + types + TanStack Query hooks
-5. [ ] Question flow UI
-6. [ ] Scoring logic (with unit tests)
+4. [x] Open Library client + types + TanStack Query hooks (`src/lib/open-library/`; `searchQueryOptions`, `trendingQueryOptions`)
+5. [x] Question flow UI (`src/components/question-flow/`, data in `src/lib/questions.ts`)
+   - **Three screens total** (UX call: fewer steps is better): (1) a book or author you love, (2) genres + audience, (3) "Fine-tune your picks" with mood, length, era and popularity. Only genres are required (and not even that if a book/author is named), so screen 3 can be skipped straight to results. Screens are declared in `STEPS` in `src/lib/questions.ts`; a step with a `heading` titles the whole screen, otherwise its first question does.
+   - **Length and era are multi-select** (popularity stays single: its options contradict). Chosen ranges are merged (`mergeRanges`: quick + medium = under 451) and sent as a union (`(pages:[* TO 249] OR pages:[451 TO *])`); picking all three means no filter. Scoring fits a book to the *nearest* chosen range.
+   - Chip labels must be unique on a screen (mood "Epic" vs length "Epic" clashed, so length is now "Long"); a test guards this.
+   - Done: native radio/checkbox chips, progress bar, back/skip, focus moves to each new heading, loading/error/empty states, cover fallback.
+   - Deferred: animated step transitions (CSS only for now); answers aren't persisted yet (Zustand).
+   - (The v1 query that could return 0 books was replaced by the candidate plan in step 6.)
+6. [x] Scoring logic (with unit tests): `src/lib/scoring/` (pure ranking, `learn()` for likes/skips) and `src/lib/recommend.ts` (candidate fetching). Run `pnpm test`.
+   - Candidates: ratings floor steps down until 30+ books (popular 20→10→3, any 3→1, hidden keeps a ceiling of 19). Each step runs a genres+moods query and a genres-only query, so a narrow mood can't empty the results.
+   - Score = signals 45% (genre 60 / mood 40, diminishing returns per extra match), Bayesian rating 25%, popularity fit 10%, length fit 10%, era fit 10%. Components with no answer are dropped and the rest renormalised. Learned feedback adds at most ±0.2.
+   - Variety: max 2 books per author (Open Library has no series field).
+   - Known limit: Open Library subject tags are noisy, so some picks are loose matches (e.g. a young-adult series under "Horror"). The explanation only names signals that actually matched, and says so when none did.
+   - **"A book or author you love"** (optional first step; `taste-step.tsx`, `combobox.tsx`, `src/lib/taste.ts`):
+     - Accessible combobox (ARIA 1.2: arrows, Enter, Escape, live announcements, focus returns sensibly). Suggestions are debounced 300 ms; title search is deduped by title+author and best-known edition first.
+     - Naming a book or author makes genres optional.
+     - Book: its subjects are filtered for boilerplate, searched in relevance order (so most shared subjects first), and compared by shared words. **Words earlier in Open Library's subject list count more**, because later ones are edition noise (graphic-novel tags etc.). The book itself, and other editions with the same title, are never recommended.
+     - Author: their books are fetched by author key (no length/era/ratings filters), then a profile of what they write about (subject words shared by a third or more of their top 10 books) finds similar authors. They can fill up to 4 slots; everyone else is capped at 2.
+     - User text is sanitised before reaching the search engine (`sanitizeText`), author keys are validated (`OL…A`).
+     - Known limit: title search also returns books about a book (e.g. "J.R.R. Tolkien's The hobbit"), so users should pick carefully from the list.
+   - **Audience filter** ("Who's it for?", under the genres on question 2; `src/lib/open-library/audience.ts`): Open Library has **no age-rating field**, so this is a heuristic over subject tags. Children, Teens & young adult, Adults (multi-select; none or all = no filter).
+     - YA books usually carry the children's tags *and* a YA tag, so children = children's tags **and not** YA tags. Adult books mostly have no audience tag, so adult = has **neither**. "New adult" has too few books (23 with 10+ ratings) so it's folded into teen.
+     - Children's tags are `juvenile fiction/literature/works` and `picture books`. A bare `children's fiction` tag is **not** trusted: it's often stray on adult books (The Martian, The Hero of Ages).
+     - Queries: `(*:* AND NOT x)` is invalid on Open Library; use `-x`. A query of only exclusions returns 0, so audience needs another positive clause (every plan has one). Applies to the loved author's books too.
+     - The three groups partition the catalogue (children + teen + adult = all). Verified live for fantasy.
+     - Known limit: tags are inconsistent per edition/work, so the children list can still leak YA series books (e.g. later Throne of Glass books). The question's help text says so.
+     - The old "Young adult" genre chip was removed: it overlapped with the audience question.
+   - **Results paging** (`results.tsx`): the whole candidate pool is ranked once and revealed 20 at a time with "Show me more" (no extra API calls). A polite status line announces "Showing 40 of 72…", focus moves to the first newly revealed book, and the button is replaced by a closing message when the pool runs out. The pool is what the search fetched (about 30 to 120 books); going past it would need more API pages.
+   - **"Start A New Search"** resets everything (answers, book, author) to a blank first screen. It used to be "Change my answers", which kept the answers; the reducer lives in `flow-state.ts` and is unit tested.
+   - **Caching and "Start A New Search"**: the reset clears the form but **not** the in-memory query cache, so repeating a search is free. Beyond that, every individual API request is cached on its own (`cachedSearch` in `queries.ts`, 1 hour fresh, kept 2 hours), so two *different* searches share any request they have in common (e.g. plain "fantasy" is reused when you add a loved author).
+     - **Why this can't serve false data:** the cache key is the exact request (query, ranges, audience, sort, page, author key). A loved book or author changes the request, so it is never matched against a search without it. Do **not** key on "similar criteria" or ignore the book/author: tests demonstrate the wrong results that would give.
+     - Memory only: a page reload clears it. Persisting to `localStorage` is possible but risky: stored `Book` objects would break after any change to their shape (this has already happened once, when `authorKeys` was added), so it would need a build-id buster and a size cap. Not done.
+   - Not wired yet: `learn()` has no UI until the swipe deck (step 7) feeds it likes, skips and saves.
 7. [ ] Swipe deck + keyboard controls
 8. [ ] Shelves, local saving, shareable URLs
 9. [ ] Accessibility pass, Lighthouse, tests (Vitest + Playwright), CI
