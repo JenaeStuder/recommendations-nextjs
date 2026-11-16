@@ -74,12 +74,19 @@ export function sanitizeText(text: string): string {
 }
 
 const AUTHOR_KEY = /^OL\d+A$/;
+const WORK_ID = /^OL\d+W$/;
+
+function workIdsClause(ids?: string[]): string | undefined {
+  const valid = (ids ?? []).filter((id) => WORK_ID.test(id));
+  return valid.length > 0 ? `key:(${valid.map((id) => `/works/${id}`).join(" OR ")})` : undefined;
+}
 
 /** Builds the Solr `q` string from structured filters. Exported for tests. */
 export function buildQuery(filters: SearchFilters): string {
   const clauses = [
     filters.text ? sanitizeText(filters.text) : undefined,
     filters.authorKey && AUTHOR_KEY.test(filters.authorKey) ? `author_key:${filters.authorKey}` : undefined,
+    workIdsClause(filters.workIds),
     ...(filters.subjectGroups ?? []).filter((g) => g.length > 0).map(groupClause),
     filters.audiences ? audienceClause(filters.audiences) : undefined,
     rangeClause("first_publish_year", filters.years),
@@ -117,6 +124,17 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   } catch {
     throw new OpenLibraryError("parse", "Unexpected response from Open Library.");
   }
+}
+
+/**
+ * Looks up specific books by work id, in one request. Books Open Library no longer has are simply
+ * missing from the result, and the order is Open Library's, not the order asked for.
+ */
+export async function getBooksByIds(ids: string[], signal?: AbortSignal): Promise<Book[]> {
+  const valid = [...new Set(ids.filter((id) => WORK_ID.test(id)))];
+  if (valid.length === 0) return [];
+  const { books } = await searchBooks({ workIds: valid, limit: valid.length }, signal);
+  return books;
 }
 
 export async function searchBooks(
@@ -173,7 +191,6 @@ export async function searchAuthors(
   }));
 }
 
-const WORK_ID = /^OL\d+W$/;
 const NO_DESCRIPTION: BookDescription = { full: "", short: "" };
 
 /**

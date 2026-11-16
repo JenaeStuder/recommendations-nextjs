@@ -30,6 +30,8 @@ export type SearchFilters = {
   text?: string;
   /** Books by one author, e.g. `OL26320A`. */
   authorKey?: string;
+  /** Look up specific works by id (e.g. `OL82563W`). Ids that aren't well formed are ignored. */
+  workIds?: string[];
   /** Heuristic age grouping from subject tags. Empty or all three means no filter. */
   audiences?: Audience[];
   /** Any of these (a union). Empty or unbounded means no filter. */

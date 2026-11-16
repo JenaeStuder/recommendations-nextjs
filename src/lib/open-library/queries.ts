@@ -1,5 +1,5 @@
 import { keepPreviousData, queryOptions, type QueryClient } from "@tanstack/react-query";
-import { getTrendingBooks, getWorkDescription, searchAuthors, searchBooks } from "./client";
+import { getBooksByIds, getTrendingBooks, getWorkDescription, searchAuthors, searchBooks } from "./client";
 import { OpenLibraryError } from "./errors";
 import type { Book, SearchFilters, SearchResult } from "./types";
 
@@ -51,6 +51,16 @@ export function cachedSearch(
       gcTime: GC_TIME,
     });
 }
+
+/** A set of books looked up by id (a shared shelf). The ids are the cache key, in the order given. */
+export const booksByIdsQueryOptions = (ids: string[]) =>
+  queryOptions({
+    queryKey: ["books", "by-ids", ids] as const,
+    queryFn: ({ signal }) => getBooksByIds(ids, signal),
+    staleTime: STALE_TIME,
+    gcTime: GC_TIME,
+    retry: shouldRetry,
+  });
 
 /** Descriptions almost never change, so keep them fresh for a day (in memory; a reload clears it). */
 const DESCRIPTION_STALE_TIME = 24 * HOUR;

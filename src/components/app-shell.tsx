@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { QuestionFlow } from "@/components/question-flow/question-flow";
+import { SharedShelf } from "@/components/shelves/shared-shelf";
 import { Shelves } from "@/components/shelves/shelves";
+import { parseShelf } from "@/lib/share";
 import { useShelf } from "@/lib/shelf-store";
 
 /** False while rendering on the server and during hydration, true afterwards (the shelf lives in localStorage). */
@@ -15,6 +18,20 @@ const useHydrated = () =>
 
 export function AppShell() {
   const [showShelves, setShowShelves] = useState(false);
+  // A shared link (?shelf=…) opens the shared shelf first. Closing it drops the parameters from the address.
+  const params = useSearchParams();
+  const shared = useMemo(() => parseShelf(params), [params]);
+  const [dismissed, setDismissed] = useState(false);
+  const showShared = Boolean(shared) && !dismissed && !showShelves;
+  const sharedHeadingRef = useRef<HTMLHeadingElement>(null);
+  const closeShared = () => {
+    window.history.replaceState(null, "", window.location.pathname);
+    setDismissed(true);
+  };
+  // After leaving the shared shelf, land on the first question's heading instead of nowhere.
+  useEffect(() => {
+    if (dismissed) document.querySelector<HTMLElement>("[data-step-heading]")?.focus();
+  }, [dismissed]);
   const hydrated = useHydrated();
   const count = useShelf((s) => Object.keys(s.reactions).length);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -48,10 +65,11 @@ export function AppShell() {
         </button>
       </div>
       {/* Kept mounted (just hidden) so answers, results and the deck are exactly as you left them. */}
-      <div hidden={showShelves}>
+      <div hidden={showShelves || showShared}>
         <QuestionFlow />
       </div>
       {showShelves && <Shelves headingRef={headingRef} />}
+      {showShared && shared && <SharedShelf shelf={shared} headingRef={sharedHeadingRef} onClose={closeShared} />}
     </>
   );
 }

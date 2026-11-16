@@ -8,7 +8,7 @@ import { SwipeDeck } from "@/components/swipe-deck/swipe-deck";
 import { BookModal } from "@/components/book-modal/book-modal";
 import { toBox, type Box } from "@/components/book-modal/flip";
 import { EMPTY_DECK, decide, undo, upcoming, type DeckState } from "@/lib/deck";
-import { OpenLibraryError, descriptionQueryOptions } from "@/lib/open-library";
+import { descriptionQueryOptions, errorMessage } from "@/lib/open-library";
 import type { Answers } from "@/lib/questions";
 import type { Taste } from "@/lib/taste";
 import { recommendationQueryOptions } from "@/lib/recommend";
@@ -28,14 +28,6 @@ type Props = {
   /** Clears everything and goes back to the first screen. */
   onNewSearch: () => void;
 };
-
-function errorMessage(error: unknown): string {
-  if (error instanceof OpenLibraryError) {
-    if (error.kind === "rate-limit") return "Open Library is getting a lot of requests. Give it a minute, then try again.";
-    if (error.kind === "network") return "We couldn't reach Open Library. Check your connection and try again.";
-  }
-  return "Something went wrong while fetching books.";
-}
 
 function Skeleton() {
   return (

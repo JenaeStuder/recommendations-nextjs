@@ -55,3 +55,14 @@ describe("suggestBooks", () => {
     expect(out.map((x) => x.title)).toEqual(["B", "C"]);
   });
 });
+
+describe("buildQuery workIds", () => {
+  it("looks works up by key", () => {
+    expect(buildQuery({ workIds: ["OL1W", "OL22W"] })).toBe("key:(/works/OL1W OR /works/OL22W)");
+  });
+
+  it("drops ids that aren't well formed, so nothing odd reaches the search engine", () => {
+    expect(buildQuery({ workIds: ["OL1W", 'x) OR key:"*', "OL2A"] })).toBe("key:(/works/OL1W)");
+    expect(buildQuery({ workIds: ["nope"] })).toBe("*:*");
+  });
+});

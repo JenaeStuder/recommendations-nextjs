@@ -1,25 +1,75 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { BookCover } from "@/components/book-cover";
 import type { Book } from "@/lib/open-library";
 import { booksOn, type Flag } from "@/lib/shelf";
+import { buildShareUrl, MAX_SHARED, type ListName } from "@/lib/share";
 import { useShelf } from "@/lib/shelf-store";
 
-const SHELVES: { flag: Flag; title: string; empty: string }[] = [
+const SHELVES: { flag: Flag; title: string; empty: string; list: ListName }[] = [
   {
     flag: "saved",
     title: "To read",
+    list: "to-read",
     empty: "Nothing saved yet. Press Save on a book you want to read later.",
   },
   {
     flag: "liked",
     title: "Liked",
+    list: "liked",
     empty: "No likes yet. Press Like on books that look like your kind of thing.",
   },
 ];
 
-function Shelf({ flag, title, empty }: (typeof SHELVES)[number]) {
+/** Copies a link to this shelf. If the browser won't allow that, the link is shown to copy by hand. */
+function ShareButton({ ids, list, title }: { ids: string[]; list: ListName; title: string }) {
+  const [state, setState] = useState<"idle" | "copied" | "manual">("idle");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const url = () => buildShareUrl(`${window.location.origin}${window.location.pathname}`, ids, list);
+
+  const share = async () => {
+    try {
+      await navigator.clipboard.writeText(url());
+      setState("copied");
+    } catch {
+      setState("manual");
+      // The input isn't in the page yet; select its text once it is.
+      requestAnimationFrame(() => inputRef.current?.select());
+    }
+  };
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-3">
+      <button
+        type="button"
+        onClick={share}
+        className="cursor-pointer rounded-full border border-ink px-4 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+      >
+        Copy link<span className="sr-only"> to share your {title} shelf</span>
+      </button>
+      <p role="status" className="text-sm text-muted">
+        {state === "copied" && "Link copied."}
+        {state === "manual" && "Copy this link:"}
+      </p>
+      {state === "manual" && (
+        <input
+          ref={inputRef}
+          readOnly
+          aria-label={`Link to your ${title} shelf`}
+          value={url()}
+          onFocus={(e) => e.currentTarget.select()}
+          className="min-w-0 flex-1 rounded-md border border-line bg-surface px-3 py-1.5 text-sm"
+        />
+      )}
+      {ids.length > MAX_SHARED && (
+        <p className="w-full text-sm text-muted">Links carry up to {MAX_SHARED} books, so the {MAX_SHARED} newest are included.</p>
+      )}
+    </div>
+  );
+}
+
+function Shelf({ flag, title, empty, list }: (typeof SHELVES)[number]) {
   const reactions = useShelf((s) => s.reactions);
   const setFlag = useShelf((s) => s.set);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -36,6 +86,7 @@ function Shelf({ flag, title, empty }: (typeof SHELVES)[number]) {
       <h3 id={`shelf-${flag}`} ref={headingRef} tabIndex={-1} className="font-serif text-2xl outline-none">
         {title} <span className="text-base text-muted">({books.length})</span>
       </h3>
+      {books.length > 0 && <ShareButton ids={books.map((b) => b.id)} list={list} title={title} />}
       {books.length === 0 ? (
         <p className="mt-3 rounded-md border border-dashed border-line p-5 text-muted">{empty}</p>
       ) : (

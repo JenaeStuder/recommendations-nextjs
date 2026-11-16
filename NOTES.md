@@ -138,7 +138,10 @@ Check domain and trademark availability before deciding.
 
 1. [x] Scaffold Next.js + Tailwind + pnpm
 2. [x] Enable static export (`output: 'export'`, `images.unoptimized`); build writes to `out/`
-   - [ ] Pick a free host and deploy
+   - [x] Host chosen: **GitHub Pages** (free for public repos). Workflow written: `.github/workflows/deploy.yml` lints, tests and builds on every PR and push to `main`, and publishes `out/` only on a push to `main`.
+     - **Base path:** a project site lives at `https://<user>.github.io/<repo>/`, so `next.config.ts` sets `basePath`/`assetPrefix` from `GITHUB_REPOSITORY` (set by Actions). Unset locally, so `pnpm dev`/`pnpm build` still serve from `/`. Verified by serving the build under `/recommendations-nextjs/`: app, search and share links all work. A custom domain at the root would need no prefix.
+     - `public/.nojekyll` stops Pages ignoring the `_next/` folder.
+     - [ ] **One manual step:** repo Settings → Pages → Source → "GitHub Actions". Then merge to `main`.
 3. [ ] Set up the theme in Tailwind v4 (colours, type, dark mode)
 4. [x] Open Library client + types + TanStack Query hooks (`src/lib/open-library/`; `searchQueryOptions`, `trendingQueryOptions`)
 5. [x] Question flow UI (`src/components/question-flow/`, data in `src/lib/questions.ts`)
@@ -211,6 +214,12 @@ Check domain and trademark availability before deciding.
      - **Stored data is re-validated on load** (`sanitizeReactions`): bad entries are dropped, ids must look like `OL…W` (they end up in URLs), and unparseable storage gives an empty shelf. This is the guard for the "stored `Book` shape changed" problem noted under step 6. The count in the header only shows after hydration (`useSyncExternalStore`) to avoid a server/client mismatch.
      - Known limits: learning from earlier visits isn't restored (only likes and saves are persisted, not the learned weights), skips aren't stored, and no cap on shelf size.
    - [ ] Drag-and-drop between shelves / reordering (dnd-kit)
-   - [ ] Shareable shelf URLs (`?shelf=OL123W,OL456W`)
+   - [x] **Shareable shelf URLs** (`?shelf=OL123W,OL456W&list=to-read`): pure rules in `src/lib/share.ts` (unit tested), UI in `components/shelves/`.
+     - Each shelf on "My shelves" has **Copy link** (newest first, capped at 50 books). If the clipboard is blocked, the link is shown in a selectable field instead.
+     - Only work ids travel in the link; opening it looks the books up in **one request** (`getBooksByIds`, Solr `key:(/works/A OR /works/B)`, `booksByIdsQueryOptions`). Order comes from the link; ids Open Library doesn't know are reported ("1 book on this link couldn't be found").
+     - **A link is untrusted input**: ids must match `OL…W`, are de-duplicated and capped, and `list` must be `to-read` or `liked` (free text never reaches the page). The same id check guards the query builder.
+     - **Opening a link** shows "A shared shelf" first (the question flow stays mounted but hidden): books with Like / Save toggles into your own shelves, "Save all N to my To read", and "Find my own books", which drops the params from the address (`history.replaceState`) and focuses the first question. Designed states: loading skeleton, error with Try again (friendly 429 message, shared `errorMessage`), empty link, none found.
+     - Static export: reading `?shelf` needs `useSearchParams`, so `AppShell` sits inside a `<Suspense>` in `page.tsx` (the build fails without it).
+     - Known limits: the receiver sees the books as they are on Open Library now, not as the sender saw them; there are no accounts, so nobody can "update" a link, they just share a new one. Not on the live site until deploy (step 2).
 9. [ ] Accessibility pass, Lighthouse, tests (Vitest + Playwright), CI
 10. [ ] Write the portfolio case study (log decisions here as we go)
