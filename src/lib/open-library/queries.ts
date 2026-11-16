@@ -1,5 +1,5 @@
-import { keepPreviousData, queryOptions, type QueryClient } from "@tanstack/react-query";
-import { getBooksByIds, getTrendingBooks, getWorkDescription, searchAuthors, searchBooks } from "./client";
+import { queryOptions, type QueryClient } from "@tanstack/react-query";
+import { getBooksByIds, getWorkDescription, searchAuthors, searchBooks } from "./client";
 import { OpenLibraryError } from "./errors";
 import type { Book, SearchFilters, SearchResult } from "./types";
 
@@ -16,17 +16,7 @@ export const GC_TIME = 2 * HOUR;
 export const bookKeys = {
   all: ["books"] as const,
   search: (filters: SearchFilters) => ["books", "search", filters] as const,
-  trending: (limit: number) => ["books", "trending", limit] as const,
 };
-
-export const searchQueryOptions = (filters: SearchFilters) =>
-  queryOptions({
-    queryKey: bookKeys.search(filters),
-    queryFn: ({ signal }) => searchBooks(filters, signal),
-    staleTime: STALE_TIME,
-    gcTime: GC_TIME,
-    placeholderData: keepPreviousData,
-  });
 
 /**
  * A `searchBooks` that goes through the query cache, one entry per distinct request.
@@ -70,14 +60,6 @@ export const descriptionQueryOptions = (workId: string) =>
     queryKey: ["books", "description", workId] as const,
     queryFn: ({ signal }) => getWorkDescription(workId, signal),
     staleTime: DESCRIPTION_STALE_TIME,
-    gcTime: GC_TIME,
-  });
-
-export const trendingQueryOptions = (limit = 20) =>
-  queryOptions({
-    queryKey: bookKeys.trending(limit),
-    queryFn: ({ signal }) => getTrendingBooks(limit, signal),
-    staleTime: STALE_TIME,
     gcTime: GC_TIME,
   });
 

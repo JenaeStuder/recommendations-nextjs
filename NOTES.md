@@ -143,7 +143,7 @@ Check domain and trademark availability before deciding.
      - `public/.nojekyll` stops Pages ignoring the `_next/` folder.
      - [ ] **One manual step:** repo Settings → Pages → Source → "GitHub Actions". Then merge to `main`.
 3. [ ] Set up the theme in Tailwind v4 (colours, type, dark mode)
-4. [x] Open Library client + types + TanStack Query hooks (`src/lib/open-library/`; `searchQueryOptions`, `trendingQueryOptions`)
+4. [x] Open Library client + types + TanStack Query hooks (`src/lib/open-library/`; `cachedSearch`; the unused `searchQueryOptions` and trending helpers were removed before the first deploy, see git history if "Not sure? Start here" is built)
 5. [x] Question flow UI (`src/components/question-flow/`, data in `src/lib/questions.ts`)
    - **Three screens total** (UX call: fewer steps is better): (1) a book or author you love, (2) genres + audience, (3) "Fine-tune your picks" with mood, length, era and popularity. Only genres are required (and not even that if a book/author is named), so screen 3 can be skipped straight to results. Screens are declared in `STEPS` in `src/lib/questions.ts`; a step with a `heading` titles the whole screen, otherwise its first question does.
    - **Length and era are multi-select** (popularity stays single: its options contradict). Chosen ranges are merged (`mergeRanges`: quick + medium = under 451) and sent as a union (`(pages:[* TO 249] OR pages:[451 TO *])`); picking all three means no filter. Scoring fits a book to the *nearest* chosen range.

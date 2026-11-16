@@ -69,10 +69,6 @@ export type RawSearchResponse = {
   docs: RawSearchDoc[];
 };
 
-export type RawTrendingResponse = {
-  works: RawSearchDoc[];
-};
-
 export type Author = {
   /** e.g. `OL26320A` */
   id: string;

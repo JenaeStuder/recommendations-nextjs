@@ -8,7 +8,6 @@ import type {
   RawAuthorsResponse,
   RawSearchDoc,
   RawSearchResponse,
-  RawTrendingResponse,
   Range,
   SearchFilters,
   SearchResult,
@@ -156,18 +155,6 @@ export async function searchBooks(
     signal,
   );
   return { books: data.docs.map(normalize), total: data.numFound };
-}
-
-/** Weekly trending books. No ratings/pages here, so those fields are undefined. */
-export async function getTrendingBooks(
-  limit = DEFAULT_LIMIT,
-  signal?: AbortSignal,
-): Promise<Book[]> {
-  const data = await getJson<RawTrendingResponse>(
-    `${BASE_URL}/trending/weekly.json?limit=${limit}`,
-    signal,
-  );
-  return data.works.map(normalize);
 }
 
 /** Author lookup for the "an author you love" field. */
