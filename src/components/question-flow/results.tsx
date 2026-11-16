@@ -3,13 +3,18 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BookCover } from "@/components/book-cover";
+import { ReactionButtons } from "@/components/reaction-buttons";
+import { SwipeDeck } from "@/components/swipe-deck/swipe-deck";
 import { BookModal } from "@/components/book-modal/book-modal";
 import { toBox, type Box } from "@/components/book-modal/flip";
+import { EMPTY_DECK, decide, undo, upcoming, type DeckState } from "@/lib/deck";
 import { OpenLibraryError, descriptionQueryOptions } from "@/lib/open-library";
 import type { Answers } from "@/lib/questions";
 import type { Taste } from "@/lib/taste";
 import { recommendationQueryOptions } from "@/lib/recommend";
-import { rankBooks, toPreferences, type ScoredBook } from "@/lib/scoring";
+import { useShelf } from "@/lib/shelf-store";
+import type { Flag } from "@/lib/shelf";
+import { rankBooks, toPreferences, type Feedback, type ScoredBook } from "@/lib/scoring";
 
 /** How many books to reveal at a time. */
 const PAGE_SIZE = 20;
@@ -34,10 +39,10 @@ function errorMessage(error: unknown): string {
 
 function Skeleton() {
   return (
-    <ul className="grid gap-6" aria-hidden="true">
+    <ul className="grid grid-cols-1 gap-x-6 gap-y-10 md:grid-cols-2 lg:grid-cols-4" aria-hidden="true">
       {Array.from({ length: 4 }, (_, i) => (
-        <li key={i} className="flex gap-4">
-          <div className="aspect-[2/3] w-24 shrink-0 animate-pulse rounded-sm bg-line" />
+        <li key={i} className="flex gap-4 md:flex-col">
+          <div className="aspect-[2/3] w-24 shrink-0 animate-pulse rounded-sm bg-line md:w-36" />
           <div className="flex-1 space-y-3 pt-1">
             <div className="h-5 w-2/3 animate-pulse rounded bg-line" />
             <div className="h-4 w-1/3 animate-pulse rounded bg-line" />
@@ -51,7 +56,15 @@ function Skeleton() {
 /** How long the pointer must rest on a book before we start loading its description. */
 const HOVER_PREFETCH_MS = 250;
 
-function BookRow({ pick, index }: { pick: ScoredBook; index: number }) {
+type RowProps = {
+  pick: ScoredBook;
+  index: number;
+  liked: boolean;
+  saved: boolean;
+  onToggle: (book: ScoredBook["book"], flag: Flag, value: boolean) => void;
+};
+
+function BookRow({ pick, index, liked, saved, onToggle }: RowProps) {
   const { book, explanation } = pick;
   // Where the cover was when it was picked up. While set, the modal is open and the cover is hidden.
   const [fromRect, setFromRect] = useState<Box | null>(null);
@@ -80,9 +93,9 @@ function BookRow({ pick, index }: { pick: ScoredBook; index: number }) {
     <li>
       {/* The title is the real button; its ::after stretches over this whole row so the row is
           clickable with a mouse too. */}
-      <div className="relative flex gap-4 rounded-md has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-offset-4 has-[button:focus-visible]:outline-ink">
+      <div className="relative flex gap-4 rounded-md md:flex-col has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-offset-4 has-[button:focus-visible]:outline-ink">
         {/* Hidden (but still taking up its space) while the book is "picked up", so there's a gap on the shelf. */}
-        <div ref={coverRef} className={`w-24 shrink-0 ${fromRect ? "invisible" : ""}`}>
+        <div ref={coverRef} className={`w-24 shrink-0 md:w-36 ${fromRect ? "invisible" : ""}`}>
           <BookCover book={book} />
         </div>
         <div className="min-w-0 pt-1">
@@ -112,6 +125,9 @@ function BookRow({ pick, index }: { pick: ScoredBook; index: number }) {
           <p aria-hidden="true" className="mt-2 text-sm text-muted">
             Read the back cover
           </p>
+          <div className="mt-3">
+            <ReactionButtons liked={liked} saved={saved} onToggle={(flag, value) => onToggle(book, flag, value)} />
+          </div>
         </div>
       </div>
 
@@ -137,6 +153,35 @@ export function Results({ answers, taste, onNewSearch }: Props) {
     () => (data ? rankBooks(data, toPreferences(answers, taste, data), {}, { limit: Infinity }) : []),
     [data, answers, taste],
   );
+
+  // The swipe deck keeps its own state here (not inside the deck) so flipping to the list and back
+  // doesn't lose what the user has already liked, skipped and saved.
+  const [view, setView] = useState<"grid" | "deck">("grid");
+  const [deck, setDeck] = useState<DeckState>(EMPTY_DECK);
+  const prefs = useMemo(() => (data ? toPreferences(answers, taste, data) : undefined), [data, answers, taste]);
+  // Likes and saves are kept in localStorage and shared by both views.
+  const reactions = useShelf((s) => s.reactions);
+  const setShelfFlag = useShelf((s) => s.set);
+  const reactedIds = useMemo(() => new Set(Object.keys(reactions)), [reactions]);
+  const deckUpcoming = useMemo(
+    () => (data && prefs ? upcoming(data, prefs, deck, reactedIds) : []),
+    [data, prefs, deck, reactedIds],
+  );
+
+  /** One place for every like and save, from either view, so learning and storage never disagree. */
+  const react = (book: ScoredBook["book"], action: Feedback) => {
+    if (action !== "skip") setShelfFlag(book, action === "like" ? "liked" : "saved", true);
+    setDeck((d) => decide(d, book, action));
+  };
+  const onToggle = (book: ScoredBook["book"], flag: Flag, value: boolean) => {
+    if (value) react(book, flag === "liked" ? "like" : "save");
+    else setShelfFlag(book, flag, false);
+  };
+  const onDeckUndo = () => {
+    const { state, entry } = undo(deck);
+    setDeck(state);
+    if (entry && entry.action !== "skip") setShelfFlag(entry.book, entry.action === "like" ? "liked" : "saved", false);
+  };
 
   const [requested, setRequested] = useState(PAGE_SIZE);
   const shown = picks.slice(0, requested);
@@ -194,47 +239,94 @@ export function Results({ answers, taste, onNewSearch }: Props) {
 
         {data && picks.length > 0 && (
           <>
-            {/* A polite live region: screen readers hear the new count after each "Show me more". */}
-            <p role="status" className="mb-6 text-muted">
-              Showing {shown.length} of {picks.length} books we found, ranked for you.
-            </p>
-            <ul className="grid gap-8">
-              {shown.map((pick, i) => (
-                <BookRow key={pick.book.id} pick={pick} index={i} />
-              ))}
-            </ul>
-
-            {remaining > 0 ? (
-              <div className="mt-10 flex flex-wrap items-center gap-4">
-                <button
-                  type="button"
-                  onClick={showMore}
-                  className={`rounded-full bg-ink px-6 py-2.5 font-medium text-paper ${BUTTON_FOCUS}`}
-                >
-                  Show me more
-                </button>
-                <span className="text-sm text-muted">
-                  {nextBatch === remaining ? `The last ${remaining}` : `${remaining} more to see`}
-                </span>
-              </div>
-            ) : (
-              picks.length > PAGE_SIZE && (
-                <p className="mt-10 text-muted">
-                  That&apos;s everything we found. Start a new search to explore something different.
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+              {view === "grid" ? (
+                /* A polite live region: screen readers hear the new count after each "Show me more". */
+                <p role="status" className="text-muted">
+                  Showing {shown.length} of {picks.length} books we found, ranked for you.
                 </p>
-              )
+              ) : (
+                <p className="text-muted">One book at a time. What you like and skip shapes what comes next.</p>
+              )}
+              <div role="group" aria-label="How to browse" className="flex rounded-full border border-ink p-0.5">
+                {(
+                  [
+                    ["grid", "List"],
+                    ["deck", "Swipe"],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    aria-pressed={view === id}
+                    onClick={() => setView(id)}
+                    className={`cursor-pointer rounded-full px-4 py-1.5 text-sm ${
+                      view === id ? "bg-ink text-paper" : ""
+                    } ${BUTTON_FOCUS}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {view === "deck" && (
+              <SwipeDeck
+                upcoming={deckUpcoming}
+                state={deck}
+                onDecide={react}
+                onUndo={onDeckUndo}
+                onShowList={() => setView("grid")}
+              />
             )}
+            {view === "grid" && <ul className="grid grid-cols-1 gap-x-6 gap-y-10 md:grid-cols-2 lg:grid-cols-4">
+              {shown.map((pick, i) => (
+                <BookRow
+                  key={pick.book.id}
+                  pick={pick}
+                  index={i}
+                  liked={Boolean(reactions[pick.book.id]?.liked)}
+                  saved={Boolean(reactions[pick.book.id]?.saved)}
+                  onToggle={onToggle}
+                />
+              ))}
+            </ul>}
+
           </>
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={onNewSearch}
-        className={`mt-10 rounded-full border border-ink px-5 py-2.5 ${BUTTON_FOCUS}`}
-      >
-        Start A New Search
-      </button>
+      {/* "Start A New Search" has ml-auto, so it stays at the far right even when the left side is empty. */}
+      <div className="mt-10 flex flex-wrap items-center justify-between gap-4">
+        {data && picks.length > 0 && view === "grid" && (
+          remaining > 0 ? (
+            <div className="flex flex-wrap items-center gap-4">
+              <button
+                type="button"
+                onClick={showMore}
+                className={`rounded-full bg-ink px-6 py-2.5 font-medium text-paper ${BUTTON_FOCUS}`}
+              >
+                Show me more
+              </button>
+              <span className="text-sm text-muted">
+                {nextBatch === remaining ? `The last ${remaining}` : `${remaining} more to see`}
+              </span>
+            </div>
+          ) : (
+            picks.length > PAGE_SIZE && (
+              <p className="text-muted">
+                That&apos;s everything we found.
+              </p>
+            )
+          )
+        )}
+        <button
+          type="button"
+          onClick={onNewSearch}
+          className={`ml-auto rounded-full border border-ink px-5 py-2.5 ${BUTTON_FOCUS}`}
+        >
+          Start A New Search
+        </button>
+      </div>
     </section>
   );
 }

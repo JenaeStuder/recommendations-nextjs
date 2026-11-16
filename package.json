@@ -12,9 +12,11 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.106.1",
+    "motion": "^14.10.1",
     "next": "16.4.5",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "zustand": "^5.1.0"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",

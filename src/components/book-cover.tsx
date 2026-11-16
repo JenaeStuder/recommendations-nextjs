@@ -13,7 +13,7 @@ export function BookCover({ book }: { book: Book }) {
   return (
     <div className="relative aspect-[2/3] w-full overflow-hidden rounded-sm bg-line">
       {src ? (
-        <Image src={src} alt={`Cover of ${book.title}`} fill sizes="120px" className="object-cover" />
+        <Image src={src} alt={`Cover of ${book.title}`} fill sizes="120px" draggable={false} className="object-cover" />
       ) : (
         <div
           role="img"

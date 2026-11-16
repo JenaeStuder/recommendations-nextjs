@@ -95,6 +95,7 @@ export function QuestionFlow() {
 
   return (
     <form
+      className="max-w-2xl"
       onSubmit={(e) => {
         e.preventDefault();
         if (canContinue) dispatch({ type: "go", step: step + 1 });

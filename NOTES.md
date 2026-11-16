@@ -190,7 +190,27 @@ Check domain and trademark availability before deciding.
      - Hover (250 ms) or keyboard focus prefetches the description so the back cover usually has text by the time it turns.
      - **Dev-mode gotcha:** React runs effects twice on mount, and our cleanup calls `dialog.close()`, whose `close` event arrives *after* the remount. The `onClose` handler therefore ignores the event unless the dialog is genuinely closed (otherwise the modal closed itself instantly in dev).
    - Not done yet: a "read more" for the full text (`parseDescription` already returns it), reuse of the flip in the swipe deck, and the visual design of the back cover (currently a plain white page with a spine shadow).
-7. [ ] Swipe deck + keyboard controls
+7. [x] Swipe deck + keyboard controls (`src/components/swipe-deck/`, state in `src/lib/deck.ts`)
+   - A **List | Swipe** toggle on the results (`aria-pressed` buttons). Deck state lives in `Results`, so switching views keeps your likes, skips and saves.
+   - **`deck.ts` (pure, tested):** `decide`, `undo`, `upcoming`, `booksWith`. Every decision stores the learned weights from *before* it, so undo restores the ranking exactly. `upcoming()` re-ranks the remaining books with `learn()` weights after every decision, so this is where `learn()` is finally wired up. Learning only affects the deck order; the List view is still the plain ranking.
+   - **Card:** `motion` package (`motion/react`, the renamed Framer Motion). Drag any direction; release past 110 px (or a quick flick) to decide: right = like, left = skip, up = save, down does nothing. Anything shorter springs back. Gesture rules are in `gesture.ts` (unit tested). Like/Skip/Save stamps fade in as you pull. The card flies off the way it was sent (`AnimatePresence custom`).
+   - **Not drag-only:** Skip / Save / Like buttons, and arrow keys (← → ↑, Z to undo) work anywhere inside the deck group. Key presses from the book modal are ignored (`closest("dialog")`) because the `<dialog>` sits inside the deck's React tree and its events bubble up.
+   - **Undo:** a toast slot (reserved space between the card and buttons, not an overlay) appears after a *skip* for 7 s and pauses on hover/focus. An always-visible Undo link and Z undo any decision.
+   - **Screen readers:** a polite live region says "Liked X. 41 left."; focus moves to the "That's the whole deck" heading when the last card goes. The end screen lists Saved and Liked books and offers Undo and "See the full list".
+   - **Reuse:** the card's "Read the back cover" opens the same flip modal.
+   - **Reduced motion:** the card leaves instantly and doesn't tilt.
+   - **Bug worth remembering:** dragging the card by its cover image started the browser's *native image drag*, which fired `pointercancel` after about 10 px, so the card crept 10 px and then snapped back. Fix: `draggable={false}` on the cover `<Image>`. Any draggable surface with `<img>` needs this.
+   - **Testing drags:** Playwright mouse moves must be paced (one small step per frame); motion samples the pointer per frame.
+   - Deck saves and likes now go to the shelves (see step 8).
 8. [ ] Shelves, local saving, shareable URLs
+   - [x] **Like and Save, in both views, saved to `localStorage`** (Zustand + persist: `src/lib/shelf-store.ts`; pure rules in `src/lib/shelf.ts`, unit tested).
+     - A book can be liked, saved, or both (independent toggles). Each flag stores the time it was switched on, which orders its shelf (newest first); un-liking never bumps a book on the other shelf. A book with neither flag is forgotten.
+     - **List view:** every card has Like and Save toggle buttons (`reaction-buttons.tsx`). The labels never change; `aria-pressed` carries the state. They sit above the row's stretched click target (`relative z-10`), so pressing them doesn't open the modal.
+     - **Both views share one path** (`react()` in `results.tsx`), so a like or save from the list also feeds `learn()` and the deck, and a deck like or save shows as pressed in the list. Books already liked or saved are left out of the deck. Deck undo of a like or save also clears the flag.
+     - **My shelves** (`app-shell.tsx`, `components/shelves/`): a button with a count in the page header opens "To read" (saved) and "Liked" shelves with designed empty states, a link to Open Library and Remove (focus goes to the shelf heading, since the button disappears). The question flow stays mounted but hidden underneath, so answers, results and the deck are as you left them. Focus goes to the shelves heading on open and back to the button on close.
+     - **Stored data is re-validated on load** (`sanitizeReactions`): bad entries are dropped, ids must look like `OL…W` (they end up in URLs), and unparseable storage gives an empty shelf. This is the guard for the "stored `Book` shape changed" problem noted under step 6. The count in the header only shows after hydration (`useSyncExternalStore`) to avoid a server/client mismatch.
+     - Known limits: learning from earlier visits isn't restored (only likes and saves are persisted, not the learned weights), skips aren't stored, and no cap on shelf size.
+   - [ ] Drag-and-drop between shelves / reordering (dnd-kit)
+   - [ ] Shareable shelf URLs (`?shelf=OL123W,OL456W`)
 9. [ ] Accessibility pass, Lighthouse, tests (Vitest + Playwright), CI
 10. [ ] Write the portfolio case study (log decisions here as we go)
