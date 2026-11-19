@@ -59,7 +59,7 @@ function ShareButton({ ids, list, title }: { ids: string[]; list: ListName; titl
           aria-label={`Link to your ${title} shelf`}
           value={url()}
           onFocus={(e) => e.currentTarget.select()}
-          className="min-w-0 flex-1 rounded-md border border-line bg-surface px-3 py-1.5 text-sm"
+          className="min-w-0 flex-1 rounded-md border border-edge bg-surface px-3 py-1.5 text-sm"
         />
       )}
       {ids.length > MAX_SHARED && (

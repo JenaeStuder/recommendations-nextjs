@@ -24,34 +24,36 @@ function QuestionBlock({
   question,
   selected,
   primary,
+  stack,
   onToggle,
 }: {
   question: Question;
   selected: string[];
   primary: boolean;
+  stack: boolean;
   onToggle: (option: string) => void;
 }) {
   const Heading = primary ? "h2" : "h3";
   return (
-    <fieldset aria-describedby={`${question.id}-desc`}>
-      <legend className="mb-1">
+    <fieldset aria-describedby={`${question.id}-desc`} className="min-w-0 text-center">
+      <legend className="mb-1 w-full">
         <Heading
           {...(primary ? { "data-step-heading": true, tabIndex: -1 } : {})}
-          className={`font-serif leading-tight outline-none ${primary ? "text-3xl" : "text-2xl"}`}
+          className={`font-serif leading-tight text-2xl outline-none`}
         >
           {question.title}
         </Heading>
       </legend>
-      <p className="mb-6 text-muted" id={`${question.id}-desc`}>
+      <p className="mb-4 text-muted" id={`${question.id}-desc`}>
         {question.description}
         {question.kind === "multi" && question.max && (
-          <span aria-live="polite">
+          <span aria-live="polite" className="whitespace-nowrap">
             {" "}
             ({selected.length} of {question.max} chosen)
           </span>
         )}
       </p>
-      <OptionGroup question={question} selected={selected} onToggle={onToggle} />
+      <OptionGroup question={question} selected={selected} onToggle={onToggle} stack={stack} />
     </fieldset>
   );
 }
@@ -95,13 +97,13 @@ export function QuestionFlow() {
 
   return (
     <form
-      className="max-w-2xl"
+      className={isTaste ? "max-w-2xl" : ""}
       onSubmit={(e) => {
         e.preventDefault();
         if (canContinue) dispatch({ type: "go", step: step + 1 });
       }}
     >
-      <div className="mb-8">
+      <div className="mb-6">
         <p className="text-sm text-muted">
           Step {step + 1} of {TOTAL_STEPS}
         </p>
@@ -140,9 +142,10 @@ export function QuestionFlow() {
           />
         </div>
       ) : (
-        <div className="space-y-10">
+        // Each question gets its own column; they wrap onto new rows as the screen narrows.
+        <div className="grid gap-x-8 gap-y-6 [grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr))]">
           {stepDef?.heading && (
-            <div>
+            <div className="col-span-full text-center">
               <h2
                 data-step-heading
                 tabIndex={-1}
@@ -160,13 +163,14 @@ export function QuestionFlow() {
               selected={answers[question.id]}
               // Without a step heading, the first question is the screen's main heading.
               primary={!stepDef?.heading && i === 0}
+              stack={!!stepDef?.stack}
               onToggle={(option) => dispatch({ type: "toggle", question: question.id, option })}
             />
           ))}
         </div>
       )}
 
-      <div className="mt-10 flex items-center gap-3">
+      <div className="mt-6 flex items-center gap-3">
         {step > 0 && (
           <button
             type="button"

@@ -125,7 +125,7 @@ export function Combobox({
             type="button"
             onClick={onClear}
             aria-label={`Remove ${selected.label}`}
-            className="shrink-0 rounded-full border border-line px-3 py-1 text-sm hover:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+            className="shrink-0 rounded-full border border-edge px-3 py-1 text-sm hover:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
           >
             Change
           </button>
@@ -165,7 +165,7 @@ export function Combobox({
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
         onKeyDown={onKeyDown}
-        className="h-12 w-full rounded-md border border-line bg-surface px-4 text-base placeholder:text-muted focus-visible:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+        className="h-12 w-full rounded-md border border-edge bg-surface px-4 text-base placeholder:text-muted focus-visible:border-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
       />
 
       <ul

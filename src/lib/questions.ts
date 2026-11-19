@@ -112,6 +112,8 @@ export type Step = {
    */
   heading?: { title: string; description: string };
   questions: QuestionId[];
+  /** Show each question's options in a single column instead of wrapping rows. */
+  stack?: boolean;
 };
 
 /**
@@ -119,13 +121,14 @@ export type Step = {
  * the flow short; everything on the last one is optional, so it can be skipped straight to results.
  */
 export const STEPS: Step[] = [
-  { questions: ["genres", "audience"] },
+  { questions: ["genres", "moods", "audience"] },
   {
     heading: {
       title: "Fine-tune your picks",
       description: "All optional. Skip anything you don't mind about.",
     },
-    questions: ["moods", "length", "era", "popularity"],
+    questions: ["length", "era", "popularity"],
+    stack: true,
   },
 ];
 

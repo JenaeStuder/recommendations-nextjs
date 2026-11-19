@@ -1,10 +1,10 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BookCover } from "@/components/book-cover";
 import { ReactionButtons } from "@/components/reaction-buttons";
-import { SwipeDeck } from "@/components/swipe-deck/swipe-deck";
 import { BookModal } from "@/components/book-modal/book-modal";
 import { toBox, type Box } from "@/components/book-modal/flip";
 import { EMPTY_DECK, decide, undo, upcoming, type DeckState } from "@/lib/deck";
@@ -13,8 +13,22 @@ import type { Answers } from "@/lib/questions";
 import type { Taste } from "@/lib/taste";
 import { recommendationQueryOptions } from "@/lib/recommend";
 import { useShelf } from "@/lib/shelf-store";
+import { useSwipeAvailable } from "@/lib/use-swipe-available";
 import type { Flag } from "@/lib/shelf";
 import { rankBooks, toPreferences, type Feedback, type ScoredBook } from "@/lib/scoring";
+
+/**
+ * Swipe is mobile-only, and it brings in the animation library, so its code is only downloaded when a
+ * phone opens it. Desktop visitors never fetch it.
+ */
+const SwipeDeck = dynamic(() => import("@/components/swipe-deck/swipe-deck").then((m) => m.SwipeDeck), {
+  ssr: false,
+  loading: () => (
+    <p role="status" className="text-muted">
+      Getting the deck ready…
+    </p>
+  ),
+});
 
 /** How many books to reveal at a time. */
 const PAGE_SIZE = 20;
@@ -106,6 +120,7 @@ function BookRow({ pick, index, liked, saved, onToggle }: RowProps) {
               }}
               onPointerLeave={() => clearTimeout(hoverTimer.current)}
               onFocus={prefetch}
+              data-no-hover
               className="cursor-pointer text-left outline-none after:absolute after:inset-0 hover:underline"
             >
               {book.title}
@@ -148,7 +163,11 @@ export function Results({ answers, taste, onNewSearch }: Props) {
 
   // The swipe deck keeps its own state here (not inside the deck) so flipping to the list and back
   // doesn't lose what the user has already liked, skipped and saved.
-  const [view, setView] = useState<"grid" | "deck">("grid");
+  const [chosenView, setView] = useState<"grid" | "deck">("grid");
+  // Swipe is mobile-only. Where it isn't offered we always show the list, but keep the choice and
+  // the deck state, so a window resized narrow comes back to the deck exactly as it was left.
+  const swipeAvailable = useSwipeAvailable();
+  const view = swipeAvailable ? chosenView : "grid";
   const [deck, setDeck] = useState<DeckState>(EMPTY_DECK);
   const prefs = useMemo(() => (data ? toPreferences(answers, taste, data) : undefined), [data, answers, taste]);
   // Likes and saves are kept in localStorage and shared by both views.
@@ -240,6 +259,7 @@ export function Results({ answers, taste, onNewSearch }: Props) {
               ) : (
                 <p className="text-muted">One book at a time. What you like and skip shapes what comes next.</p>
               )}
+              {swipeAvailable && (
               <div role="group" aria-label="How to browse" className="flex rounded-full border border-ink p-0.5">
                 {(
                   [
@@ -260,6 +280,7 @@ export function Results({ answers, taste, onNewSearch }: Props) {
                   </button>
                 ))}
               </div>
+              )}
             </div>
             {view === "deck" && (
               <SwipeDeck

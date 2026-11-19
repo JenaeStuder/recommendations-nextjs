@@ -1,6 +1,6 @@
 name: Deploy to GitHub Pages
 
-# Every pull request and every push to main is linted, tested and built.
+# Every pull request and every push to main is linted, tested (unit and browser) and built.
 # Only a push to main is published.
 on:
   push:
@@ -35,8 +35,26 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm test
-      # next.config.ts reads GITHUB_REPOSITORY (set by Actions) to serve the site from /<repo-name>/.
-      - run: pnpm build
+
+      # Browser tests (including the accessibility audit) run against a build served from "/".
+      # GITHUB_REPOSITORY is blanked so this build has no /<repo-name>/ prefix. The Chrome that
+      # comes on GitHub's Ubuntu runners is used; no browser is downloaded.
+      - name: Build for browser tests
+        run: pnpm build
+        env:
+          GITHUB_REPOSITORY: ""
+      - run: pnpm exec playwright test
+      # If a browser test fails, the report (with screenshots and traces) is the fastest way to see why.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 7
+
+      # The real build. next.config.ts reads GITHUB_REPOSITORY (set by Actions) to serve the site from /<repo-name>/.
+      - name: Build for GitHub Pages
+        run: pnpm build
 
       - uses: actions/upload-pages-artifact@v3
         with:

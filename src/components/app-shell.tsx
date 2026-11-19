@@ -2,11 +2,16 @@
 
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { QuestionFlow } from "@/components/question-flow/question-flow";
 import { SharedShelf } from "@/components/shelves/shared-shelf";
 import { Shelves } from "@/components/shelves/shelves";
 import { parseShelf } from "@/lib/share";
+import { SITE_NAME } from "@/lib/site";
 import { useShelf } from "@/lib/shelf-store";
+
+const HEADER_BUTTON =
+  "cursor-pointer whitespace-nowrap rounded-full border px-4 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink";
 
 /** False while rendering on the server and during hydration, true afterwards (the shelf lives in localStorage). */
 const useHydrated = () =>
@@ -50,26 +55,30 @@ export function AppShell() {
 
   return (
     <>
-      <div className="mb-10 flex items-center justify-between gap-4">
-        <h1 className="font-serif text-lg text-muted">Find your next book</h1>
-        <button
-          ref={toggleRef}
-          type="button"
-          aria-pressed={showShelves}
-          onClick={() => setShowShelves((v) => !v)}
-          className={`cursor-pointer rounded-full border border-ink px-4 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink ${
-            showShelves ? "bg-ink text-paper" : ""
-          }`}
-        >
-          My shelves{hydrated && count > 0 ? ` (${count})` : ""}
-        </button>
-      </div>
-      {/* Kept mounted (just hidden) so answers, results and the deck are exactly as you left them. */}
-      <div hidden={showShelves || showShared}>
-        <QuestionFlow />
-      </div>
-      {showShelves && <Shelves headingRef={headingRef} />}
-      {showShared && shared && <SharedShelf shelf={shared} headingRef={sharedHeadingRef} onClose={closeShared} />}
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 lg:mb-5">
+        <h1 className="font-serif text-lg whitespace-nowrap text-muted">{SITE_NAME}</h1>
+        <div className="flex items-center gap-2">
+          <ThemeToggle className={`${HEADER_BUTTON} border-edge`} />
+          <button
+            ref={toggleRef}
+            type="button"
+            aria-pressed={showShelves}
+            onClick={() => setShowShelves((v) => !v)}
+            className={`${HEADER_BUTTON} border-ink ${showShelves ? "bg-ink text-paper" : ""}`}
+          >
+            My shelves{hydrated && count > 0 ? ` (${count})` : ""}
+          </button>
+        </div>
+      </header>
+      {/* The skip link in the layout lands here. tabIndex -1 lets it take focus without joining the tab order. */}
+      <main id="main" tabIndex={-1} className="outline-none">
+        {/* Kept mounted (just hidden) so answers, results and the deck are exactly as you left them. */}
+        <div hidden={showShelves || showShared}>
+          <QuestionFlow />
+        </div>
+        {showShelves && <Shelves headingRef={headingRef} />}
+        {showShared && shared && <SharedShelf shelf={shared} headingRef={sharedHeadingRef} onClose={closeShared} />}
+      </main>
     </>
   );
 }

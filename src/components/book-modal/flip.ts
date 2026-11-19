@@ -92,6 +92,46 @@ export function poseAt(g: FlipGeometry, p: number): Pose {
   };
 }
 
+// ---- Depth: a shadow that detaches from the book, and light that falls off the turning faces. ----
+// Both are separate layers animated with `transform` and `opacity` only (no box-shadow, no filter
+// animation), so the browser can run them on the GPU without repainting.
+
+/** How far below the book its shadow sits when the book is lying on the shelf, in px (nearly touching). */
+const SHADOW_SHELF_DROP = 3;
+/** ...and when it is held up in hand, at rest. This matches the old static shadow's offset. */
+const SHADOW_HAND_DROP = 28;
+/** Extra distance at the top of the arc: the higher the book, the further its shadow falls away. */
+const SHADOW_ARC_DROP = 16;
+/** A turning card seen from above has a thinner footprint; this is the least width it narrows to (edge-on). */
+const SHADOW_MIN_WIDTH = 0.12;
+/** How dark a face gets, at most (opacity of a black layer), when it is edge-on to the viewer. */
+export const SHADE_MAX = 0.5;
+
+export type ShadowPose = { x: number; y: number; scaleX: number; scaleY: number; opacity: number };
+
+/**
+ * Where the shadow is at progress `p`. It stays on the ground track beneath the book (it does NOT
+ * rise with the lift: that growing gap is what sells the height), follows the book's size, narrows
+ * as the book turns edge-on, and fades in as the book leaves the shelf (a book lying flat casts none).
+ */
+export function shadowAt(g: FlipGeometry, p: number): ShadowPose {
+  const pose = poseAt(g, p);
+  const arc = Math.sin(Math.PI * p);
+  const footprint = SHADOW_MIN_WIDTH + (1 - SHADOW_MIN_WIDTH) * Math.abs(Math.cos((pose.flip * Math.PI) / 180));
+  return {
+    x: pose.x,
+    y: g.dy * (1 - p) + SHADOW_SHELF_DROP + (SHADOW_HAND_DROP - SHADOW_SHELF_DROP) * p + SHADOW_ARC_DROP * arc,
+    scaleX: pose.scale * footprint,
+    scaleY: pose.scale * (1 + 0.06 * arc),
+    opacity: 1 - (1 - clamp01(p)) ** 2,
+  };
+}
+
+/** How dark the visible face is at progress `p`: 0 facing the viewer, `SHADE_MAX` edge-on. Same curve for both faces. */
+export function shadeAt(g: FlipGeometry, p: number): number {
+  return SHADE_MAX * Math.sin((poseAt(g, p).flip * Math.PI) / 180);
+}
+
 // Every keyframe uses the same four transform functions in the same order. If they differed,
 // browsers would interpolate matrices instead, and the path would swing wildly.
 const transformOf = (s: Pose) =>
@@ -101,11 +141,39 @@ const transformOf = (s: Pose) =>
  * `progressAt(u)` says how far along the trip (0..1) the book is at time `u` (0..1). Keyframes sit at
  * even steps of time and are joined with linear easing: the easing lives in `progressAt`, once.
  */
-function sample(g: FlipGeometry, progressAt: (u: number) => number): Keyframe[] {
+function sample(
+  g: FlipGeometry,
+  progressAt: (u: number) => number,
+  frame: (g: FlipGeometry, p: number) => Keyframe = (geo, p) => ({ transform: transformOf(poseAt(geo, p)) }),
+): Keyframe[] {
   return Array.from({ length: SAMPLES }, (_, i) => {
     const u = i / (SAMPLES - 1);
-    return { offset: u, transform: transformOf(poseAt(g, progressAt(u))) };
+    return { offset: u, ...frame(g, progressAt(u)) };
   });
+}
+
+const shadowFrame = (g: FlipGeometry, p: number): Keyframe => {
+  const s = shadowAt(g, p);
+  return { transform: `translate(${s.x}px, ${s.y}px) scale(${s.scaleX}, ${s.scaleY})`, opacity: s.opacity };
+};
+const shadeFrame = (g: FlipGeometry, p: number): Keyframe => ({ opacity: shadeAt(g, p) });
+
+/** The three layers that make up the trip, each with the same timing as the card. */
+export type FlipLayers = { card: Keyframe[]; shadow: Keyframe[]; shade: Keyframe[] };
+
+/** Shelf to hand, for the card, its detached shadow, and the light on its faces. */
+export function openLayers(g: FlipGeometry): FlipLayers {
+  return {
+    card: sample(g, easeInOutCubic),
+    shadow: sample(g, easeInOutCubic, shadowFrame),
+    shade: sample(g, easeInOutCubic, shadeFrame),
+  };
+}
+
+/** Hand to shelf: all three layers run backwards together. */
+export function closeLayers(g: FlipGeometry): FlipLayers {
+  const back = (u: number) => 1 - easeInOutCubic(u);
+  return { card: sample(g, back), shadow: sample(g, back, shadowFrame), shade: sample(g, back, shadeFrame) };
 }
 
 /** Shelf to hand: lifts off the shelf, travels to the centre, and turns over to show its back. */

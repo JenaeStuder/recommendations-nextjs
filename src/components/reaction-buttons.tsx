@@ -40,7 +40,7 @@ export function ReactionButtons({ liked, saved, onToggle }: Props) {
         type="button"
         aria-pressed={liked}
         onClick={() => onToggle("liked", !liked)}
-        className={`${BASE} ${liked ? "border-accent bg-accent text-paper" : "border-line text-ink hover:border-ink"}`}
+        className={`${BASE} ${liked ? "border-accent bg-accent text-paper" : "border-edge text-ink hover:border-ink"}`}
       >
         <Heart filled={liked} />
         Like
@@ -49,7 +49,7 @@ export function ReactionButtons({ liked, saved, onToggle }: Props) {
         type="button"
         aria-pressed={saved}
         onClick={() => onToggle("saved", !saved)}
-        className={`${BASE} ${saved ? "border-ink bg-ink text-paper" : "border-line text-ink hover:border-ink"}`}
+        className={`${BASE} ${saved ? "border-ink bg-ink text-paper" : "border-edge text-ink hover:border-ink"}`}
       >
         <Bookmark filled={saved} />
         Save

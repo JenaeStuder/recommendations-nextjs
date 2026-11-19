@@ -7,9 +7,9 @@ import { DescriptionPanel } from "./description-panel";
 import {
   CLOSE_MS,
   OPEN_MS,
-  closeKeyframes,
+  closeLayers,
   geometryFor,
-  openKeyframes,
+  openLayers,
   prefersReducedMotion,
   type Box,
 } from "./flip";
@@ -27,6 +27,34 @@ type Props = {
 /** A book cover is 2:3. Capped by width, by the viewport width, and by the viewport height. */
 const CARD_WIDTH = "min(420px, 92vw, 61dvh)";
 
+/**
+ * Light falling off a face as it turns away: a black layer, invisible at rest, whose opacity rises
+ * as the face goes edge-on. Each face is hidden once it is past edge-on, so one curve serves both.
+ */
+function Shade({ className }: { className: string }) {
+  return (
+    <div
+      data-shade
+      aria-hidden="true"
+      className={`pointer-events-none absolute inset-0 bg-black opacity-0 ${className}`}
+    />
+  );
+}
+
+/** Starts the card, shadow and face-shading animations together, so they stay in step. */
+function playLayers(
+  card: HTMLElement,
+  shadow: HTMLElement,
+  layers: ReturnType<typeof openLayers>,
+  options: KeyframeAnimationOptions,
+): Animation[] {
+  return [
+    card.animate(layers.card, options),
+    shadow.animate(layers.shadow, options),
+    ...[...card.querySelectorAll<HTMLElement>("[data-shade]")].map((el) => el.animate(layers.shade, options)),
+  ];
+}
+
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink";
 
 /**
@@ -41,8 +69,9 @@ export function BookModal({ pick, fromRect, getReturnRect, onClosed }: Props) {
   const scrimRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const shadowRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const openAnimation = useRef<Animation | null>(null);
+  const openAnimations = useRef<Animation[]>([]);
   const closing = useRef(false);
   const titleId = useId();
   const bodyId = useId();
@@ -53,7 +82,8 @@ export function BookModal({ pick, fromRect, getReturnRect, onClosed }: Props) {
     const card = cardRef.current;
     const stage = stageRef.current;
     const scrim = scrimRef.current;
-    if (!dialog || !card || !stage || !scrim) return;
+    const shadow = shadowRef.current;
+    if (!dialog || !card || !stage || !scrim || !shadow) return;
 
     // The page behind must not scroll. The reserved scrollbar gutter (see globals.css) stops the
     // layout shifting when the scrollbar disappears, which would nudge the cover's return spot.
@@ -70,11 +100,16 @@ export function BookModal({ pick, fromRect, getReturnRect, onClosed }: Props) {
         { width: card.offsetWidth },
       );
       scrim.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 350, easing: "ease-out" });
-      openAnimation.current = card.animate(openKeyframes(geometry), { duration: OPEN_MS, easing: "linear" });
+      openAnimations.current = playLayers(card, shadow, openLayers(geometry), {
+        duration: OPEN_MS,
+        easing: "linear",
+      });
     }
 
     return () => {
-      for (const a of [...card.getAnimations(), ...scrim.getAnimations()]) a.cancel();
+      for (const a of [...card.getAnimations({ subtree: true }), ...shadow.getAnimations(), ...scrim.getAnimations()]) {
+        a.cancel();
+      }
       document.documentElement.style.overflow = previousOverflow;
       if (dialog.open) dialog.close(); // also returns focus to the button that opened it
     };
@@ -88,10 +123,11 @@ export function BookModal({ pick, fromRect, getReturnRect, onClosed }: Props) {
     const card = cardRef.current;
     const stage = stageRef.current;
     const scrim = scrimRef.current;
+    const shadow = shadowRef.current;
     const target = getReturnRect();
 
-    if (card && stage && scrim && target && target.width > 0 && !prefersReducedMotion()) {
-      openAnimation.current?.finish(); // closed while still opening: jump to the end, then go back
+    if (card && stage && scrim && shadow && target && target.width > 0 && !prefersReducedMotion()) {
+      for (const a of openAnimations.current) a.finish(); // closed while still opening: jump to the end, then go back
       const geometry = geometryFor(
         target,
         { width: stage.clientWidth, height: stage.clientHeight },
@@ -103,8 +139,12 @@ export function BookModal({ pick, fromRect, getReturnRect, onClosed }: Props) {
         fill: "forwards",
       });
       try {
-        await card.animate(closeKeyframes(geometry), { duration: CLOSE_MS, easing: "linear", fill: "forwards" })
-          .finished;
+        const flight = playLayers(card, shadow, closeLayers(geometry), {
+          duration: CLOSE_MS,
+          easing: "linear",
+          fill: "forwards",
+        });
+        await Promise.all(flight.map((a) => a.finished));
       } catch {
         // Cancelled (the modal was unmounted mid-flight). Nothing left to animate.
       }
@@ -150,26 +190,45 @@ export function BookModal({ pick, fromRect, getReturnRect, onClosed }: Props) {
         }}
         className="absolute inset-0 grid place-items-center [perspective:1600px]"
       >
+        {/*
+          The book's shadow, as its own layer so it can come away from the book: it stays on the "table"
+          while the book rises, drifts further off, and narrows as the book turns edge-on. Pre-blurred
+          once (a static filter is rasterised once); only its transform and opacity are animated.
+          Its resting state, written here, is the end of the opening animation.
+        */}
+        <div
+          ref={shadowRef}
+          aria-hidden="true"
+          className="pointer-events-none rounded-md will-change-transform [grid-area:1/1]"
+          style={{
+            width: CARD_WIDTH,
+            height: `calc(${CARD_WIDTH} * 1.5)`,
+            background: "rgb(0 0 0 / 0.65)",
+            filter: "blur(28px)",
+            transform: "translate(0px, 28px) scale(1, 1)",
+          }}
+        />
         <div
           ref={cardRef}
-          className="relative rounded-md will-change-transform [transform-style:preserve-3d]"
+          className="relative rounded-md will-change-transform [grid-area:1/1] [transform-style:preserve-3d]"
           style={{
             width: CARD_WIDTH,
             height: `calc(${CARD_WIDTH} * 1.5)`,
             // Resting state = turned over, centred. The open animation ends exactly here.
             transform: "rotateY(180deg)",
-            // Static on purpose: only the transform is animated, which the browser can do on the GPU
-            // without repainting. An animated shadow would be repainted on every frame.
-            boxShadow: "0 28px 56px rgb(0 0 0 / 0.38)",
+            // Just a hairline to define the edge against the dim. The real shadow is the layer behind.
+            boxShadow: "0 0 0 1px rgb(0 0 0 / 0.25)",
           }}
         >
           {/* Front: the same cover as in the list (decorative here; the back carries the content). */}
           <div aria-hidden="true" className="absolute inset-0 [backface-visibility:hidden]">
             <BookCover book={book} />
+            <Shade className="rounded-sm" />
           </div>
 
           {/* Back cover: only visible once turned over. */}
           <section className="absolute inset-0 flex flex-col overflow-hidden rounded-md border border-line bg-surface [backface-visibility:hidden] [transform:rotateY(180deg)]">
+            <Shade className="z-10 rounded-md" />
             <div
               aria-hidden="true"
               className="absolute inset-y-0 left-0 w-4 bg-gradient-to-r from-ink/25 to-transparent"

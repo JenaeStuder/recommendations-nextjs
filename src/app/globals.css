@@ -1,23 +1,56 @@
 @import "tailwindcss";
 
-/* Semantic tokens. Step 3 (theme) can restyle these without touching components. */
+/*
+  Semantic tokens. "Library at dusk": warm linen paper, aubergine-brown ink, oxblood accent
+  (leather-bound spines); in the dark theme, lamplight gold on a wine-black.
+  WCAG AAA: ink, muted and accent are all 7:1 or better on paper and surface (checked).
+  `line` is decoration only (dividers, skeletons). Anything a person operates uses `edge`, which is 3:1+.
+*/
 :root {
-  --paper: #f2f4f0;
-  --surface: #ffffff;
-  --ink: #16231f;
-  --muted: #55655e;
-  --line: #c9d3cd;
-  --accent: #1f6f5c;
+  --paper: #f5eee3;
+  --surface: #fcf8f2;
+  --ink: #2b1d22;
+  --muted: #55434a;
+  --line: #cdbfb0;
+  --edge: #857264;
+  --accent: #7a2236;
+  /*
+    Hover wash: the ink colour at partial opacity. Ink text on it must stay AAA (7:1): a full
+    one-third gives 6.99:1 in light and about 5:1 in dark, so the strength is tuned per theme
+    (light 30% = 7.5:1, dark 20% = 7.7:1). Re-check if any colour above changes.
+  */
+  --hover-bg: color-mix(in srgb, var(--ink) 30%, transparent);
+  color-scheme: light;
+}
+
+/*
+  Dark theme, in two selectors that must stay identical (a test checks): when the person chose "dark" in
+  the toggle (data-theme), and when they haven't chosen and their system prefers dark. Choosing "light"
+  (data-theme="light") beats the system preference; no choice follows the system.
+*/
+:root[data-theme="dark"] {
+  --paper: #1c1416;
+  --surface: #271c1f;
+  --ink: #f3e9dc;
+  --muted: #c4b2ae;
+  --line: #4a3a3d;
+  --edge: #85706f;
+  --accent: #e6b877;
+  --hover-bg: color-mix(in srgb, var(--ink) 20%, transparent);
+  color-scheme: dark;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #0f1613;
-    --surface: #17211d;
-    --ink: #e7eee9;
-    --muted: #9fb0a7;
-    --line: #2c3c35;
-    --accent: #5fbf9f;
+  :root:not([data-theme="light"]) {
+    --paper: #1c1416;
+    --surface: #271c1f;
+    --ink: #f3e9dc;
+    --muted: #c4b2ae;
+    --line: #4a3a3d;
+    --edge: #85706f;
+    --accent: #e6b877;
+    --hover-bg: color-mix(in srgb, var(--ink) 20%, transparent);
+    color-scheme: dark;
   }
 }
 
@@ -27,10 +60,10 @@
   --color-ink: var(--ink);
   --color-muted: var(--muted);
   --color-line: var(--line);
+  --color-edge: var(--edge);
   --color-accent: var(--accent);
-  --font-sans: var(--font-geist-sans);
-  --font-serif: var(--font-newsreader);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-figtree), system-ui, sans-serif;
+  --font-serif: var(--font-fraunces), Georgia, serif;
 }
 
 /* Keep the scrollbar's space reserved so hiding it (while a modal is open) doesn't shift the page. */
@@ -41,7 +74,62 @@ html {
 body {
   background: var(--paper);
   color: var(--ink);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-family: var(--font-sans);
+}
+
+/* Fraunces is a "soft" old-style serif: SOFT rounds the serifs, opsz tunes it per size. */
+h1,
+h2,
+h3 {
+  font-optical-sizing: auto;
+  font-variation-settings: "SOFT" 100;
+  letter-spacing: -0.01em;
+}
+
+/* No widows: headings balance their lines, running text avoids a lone last word. */
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+p,
+li,
+figcaption,
+label {
+  text-wrap: pretty;
+}
+
+/*
+  Hover for every button and option chip: the background washes to a tint of the ink colour and the
+  text turns to full ink (also the grey hint line, which would otherwise dip below 7:1).
+  Skipped for disabled and already-selected buttons, and for [data-no-hover] (the book title,
+  whose click area is stretched over the whole card). Only where a real hover exists, so touch
+  screens don't get stuck hover states. Unlayered on purpose: it must beat Tailwind's utilities.
+*/
+button,
+label[data-chip] {
+  transition:
+    background-color 220ms ease,
+    color 220ms ease,
+    border-color 220ms ease;
+}
+
+@media (hover: hover) {
+  button:hover:not(:disabled, [aria-pressed="true"], [data-no-hover]),
+  label[data-chip]:hover:not(:has(:checked, :disabled)) {
+    background-color: var(--hover-bg);
+    color: var(--ink);
+  }
+
+  label[data-chip]:hover:not(:has(:checked, :disabled)) [data-chip-hint] {
+    color: var(--ink);
+  }
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--paper);
 }
 
 @media (prefers-reduced-motion: reduce) {

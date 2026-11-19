@@ -2,11 +2,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BOOK_ASPECT,
   SAMPLES,
+  SHADE_MAX,
   closeKeyframes,
+  closeLayers,
   easeInOutCubic,
   geometryFor,
   openKeyframes,
+  openLayers,
   poseAt,
+  shadeAt,
+  shadowAt,
   prefersReducedMotion,
   toBox,
   type Box,
@@ -263,6 +268,88 @@ describe("closeKeyframes", () => {
     const all = steps(frames);
     const peak = Math.max(...all);
     expect(Math.min(...middleOf(all))).toBeGreaterThan(peak * MIN_MIDDLE_SPEED);
+  });
+});
+
+describe("depth: shadow and shade", () => {
+  const g = geometryFor({ left: 100, top: 500, width: 100, height: 150 }, stage, card);
+
+  it("casts no shadow while the book lies on the shelf, and a full one in hand", () => {
+    expect(shadowAt(g, 0).opacity).toBe(0);
+    expect(shadowAt(g, 1).opacity).toBe(1);
+  });
+
+  it("ends exactly at rest: directly under the centred card, full size, the old static offset", () => {
+    const end = shadowAt(g, 1);
+    expect(end.x).toBeCloseTo(0, 6);
+    expect(end.y).toBeCloseTo(28, 6);
+    expect(end.scaleX).toBeCloseTo(1, 6);
+    expect(end.scaleY).toBeCloseTo(1, 6);
+  });
+
+  it("starts tight against the shelf: nearly touching, and the size of the cover", () => {
+    const start = shadowAt(g, 0);
+    expect(start.y - g.dy).toBeLessThan(5);
+    expect(start.scaleY).toBeCloseTo(g.scale);
+  });
+
+  it("falls AWAY from the book as it rises: the gap between book and shadow grows to a maximum mid-flight", () => {
+    const gap = (p: number) => shadowAt(g, p).y - poseAt(g, p).y;
+    expect(gap(0.5)).toBeGreaterThan(gap(0));
+    expect(gap(0.5)).toBeGreaterThan(gap(1));
+  });
+
+  it("does not rise with the book: the shadow stays on the ground track", () => {
+    for (const p of [0.2, 0.4, 0.6, 0.8]) {
+      expect(shadowAt(g, p).y).toBeGreaterThan(poseAt(g, p).y);
+    }
+  });
+
+  it("narrows to a sliver as the book turns edge-on, and widens again after", () => {
+    const edgeOn = 0.6; // the turn runs over p = 0.2..1 and is at 90 degrees exactly halfway through it
+    const narrowest = shadowAt(g, edgeOn);
+    expect(poseAt(g, edgeOn).flip).toBeCloseTo(90, 6);
+    expect(narrowest.scaleX).toBeLessThan(narrowest.scaleY * 0.2);
+    expect(shadowAt(g, 1).scaleX).toBeGreaterThan(narrowest.scaleX);
+  });
+
+  it("leaves both faces unshaded at the ends and darkest (SHADE_MAX) when edge-on", () => {
+    expect(shadeAt(g, 0)).toBe(0);
+    expect(shadeAt(g, 1)).toBeCloseTo(0, 10);
+    const peak = Math.max(...Array.from({ length: 201 }, (_, i) => shadeAt(g, i / 200)));
+    expect(peak).toBeCloseTo(SHADE_MAX, 2);
+  });
+
+  it("is built from the same sampling as the card, so all three layers stay in step", () => {
+    const { card: c, shadow, shade } = openLayers(g);
+    expect(shadow).toHaveLength(c.length);
+    expect(shade).toHaveLength(c.length);
+    expect(shadow.map((k) => k.offset)).toEqual(c.map((k) => k.offset));
+    expect(c).toEqual(openKeyframes(g));
+  });
+
+  it("animates ONLY transform and opacity (the properties the browser can run without repainting)", () => {
+    const { shadow, shade } = openLayers(g);
+    for (const k of shadow) expect(Object.keys(k).sort()).toEqual(["offset", "opacity", "transform"]);
+    for (const k of shade) expect(Object.keys(k).sort()).toEqual(["offset", "opacity"]);
+  });
+
+  it("uses the same transform functions in the same order in every shadow keyframe", () => {
+    const fns = (t: unknown) => String(t).match(/[a-zA-Z]+(?=\()/g)?.join(",");
+    const shapes = new Set(openLayers(g).shadow.map((k) => fns(k.transform)));
+    expect(shapes.size).toBe(1);
+  });
+
+  it("closing is opening backwards for the shadow and the shade too", () => {
+    const open = openLayers(g);
+    const close = closeLayers(g);
+    const backwards = [...open.shadow].reverse();
+    close.shadow.forEach((f, i) => {
+      nums(f.transform).forEach((n, k) => expect(n).toBeCloseTo(nums(backwards[i].transform)[k], 8));
+      expect(f.opacity as number).toBeCloseTo(backwards[i].opacity as number, 8);
+    });
+    const shadeBack = [...open.shade].reverse();
+    close.shade.forEach((f, i) => expect(f.opacity as number).toBeCloseTo(shadeBack[i].opacity as number, 8));
   });
 });
 

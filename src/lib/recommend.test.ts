@@ -186,8 +186,8 @@ describe("questions and steps", () => {
     expect(new Set(placed).size).toBe(placed.length);
   });
 
-  it("shows audience on the same screen as genres, below them", () => {
-    expect(STEPS[0].questions).toEqual(["genres", "audience"]);
+  it("shows mood and audience on the same screen as genres, genres first", () => {
+    expect(STEPS[0].questions).toEqual(["genres", "moods", "audience"]);
   });
 
   it("keeps the whole flow to three screens, counting the book-or-author screen", () => {
@@ -200,9 +200,11 @@ describe("questions and steps", () => {
     expect(STEPS[STEPS.length - 1].questions).not.toContain("genres");
   });
 
-  it("gives a screen with several unrelated questions its own heading", () => {
+  it("gives a screen of unrelated questions its own heading (the genre screen's questions are all about the kind of book, so genres titles it)", () => {
     for (const step of STEPS) {
-      if (step.questions.length > 2) expect(step.heading).toBeDefined();
+      if (!step.questions.includes("genres") && step.questions.length > 1) {
+        expect(step.heading).toBeDefined();
+      }
     }
   });
 
