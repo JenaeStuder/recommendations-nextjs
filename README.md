@@ -27,7 +27,7 @@ Recommendations are built in the browser from [Open Library](https://openlibrary
 | [Lighthouse](https://developer.chrome.com/docs/lighthouse) | Performance, accessibility, best-practices and SEO audits (run by hand, see below). |
 | [ESLint](https://eslint.org) 9 with `eslint-config-next` | Linting. |
 | [pnpm](https://pnpm.io) 10 | Package manager (the version is pinned in `package.json`). |
-| GitHub Actions and GitHub Pages | CI (lint, unit tests, browser tests, build on every PR and push) and free static hosting. |
+| GitHub Actions and GitHub Pages | CI (lint, unit tests and build on every PR and push) and free static hosting. |
 
 Planned but not added yet: dnd-kit (drag-and-drop shelves).
 
@@ -68,7 +68,7 @@ pnpm dev         # http://localhost:3000
 | `pnpm test:e2e` | Build, then run the browser tests (end to end and accessibility). `pnpm test:e2e:only` skips the build. |
 | `pnpm build` | Build the static site into `out/`. |
 
-`pnpm lint`, `pnpm test`, `pnpm test:e2e` and `pnpm build` must all pass before a change is done. Use pnpm only, not npm or yarn.
+`pnpm lint`, `pnpm test`, `pnpm test:e2e` and `pnpm build` must all pass before a change is done. The first, second and fourth also run in CI; **the browser tests run on your machine only**, so run `pnpm test:e2e` before you push. Use pnpm only, not npm or yarn.
 
 ## Tests
 
@@ -79,9 +79,9 @@ Lighthouse (run by hand against the production build, November 2026): desktop **
 
 ## Deployment
 
-The site is static, and `.github/workflows/deploy.yml` lints, runs the unit and browser tests, and builds on every pull request and push to `main`. Only a push to `main` publishes to GitHub Pages. One-time setup: in the repo's Settings, Pages, set Source to "GitHub Actions".
+The site is static, and `.github/workflows/deploy.yml` lints, runs the unit tests and builds on every pull request and push to `main`. Only a push to `main` publishes to GitHub Pages. One-time setup: in the repo's Settings, Pages, set Source to "GitHub Actions".
 
-A project site lives at `https://<user>.github.io/<repo>/`, so `next.config.ts` sets `basePath` from `GITHUB_REPOSITORY` when it runs in Actions. Locally it is unset, so the app serves from `/`. The browser tests run against a build without that prefix, and the workflow builds twice for that reason.
+A project site lives at `https://<user>.github.io/<repo>/`, so `next.config.ts` sets `basePath` from `GITHUB_REPOSITORY` when it runs in Actions. Locally it is unset, so the app serves from `/`. The browser tests run locally against a build without that prefix (`pnpm test:e2e` handles it), so they are not part of the workflow.
 
 ## Project layout
 
