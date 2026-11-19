@@ -2,6 +2,20 @@ import { describe, expect, it } from "vitest";
 import { SITE_DESCRIPTION, SITE_NAME, siteUrl } from "./site";
 
 describe("siteUrl", () => {
+  it("depends only on its argument, never on the environment it runs in", () => {
+    // CI sets GITHUB_REPOSITORY; your machine doesn't. Neither may change the answer for a given argument.
+    const before = process.env.GITHUB_REPOSITORY;
+    try {
+      process.env.GITHUB_REPOSITORY = "someone/else";
+      expect(siteUrl(undefined)).toBe("http://localhost:3000");
+      delete process.env.GITHUB_REPOSITORY;
+      expect(siteUrl(undefined)).toBe("http://localhost:3000");
+    } finally {
+      if (before === undefined) delete process.env.GITHUB_REPOSITORY;
+      else process.env.GITHUB_REPOSITORY = before;
+    }
+  });
+
   it("is the GitHub Pages origin when run by GitHub Actions", () => {
     expect(siteUrl("JenaeStuder/recommendations-nextjs")).toBe("https://jenaestuder.github.io");
   });

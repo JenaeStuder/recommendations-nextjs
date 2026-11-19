@@ -19,7 +19,7 @@ const fraunces = Fraunces({
 
 export const metadata: Metadata = {
   // Makes the share-preview image address absolute (link previews need that).
-  metadataBase: new URL(siteUrl()),
+  metadataBase: new URL(siteUrl(process.env.GITHUB_REPOSITORY)),
   title: SITE_NAME,
   description: SITE_DESCRIPTION,
   applicationName: SITE_NAME,
